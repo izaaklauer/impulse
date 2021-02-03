@@ -1,10 +1,9 @@
 package chamber
 
-// TODO: language enum 
+type Status struct {
+    Id           string `json:"id"`
+    Status       string `json:"status"`
+    UptimeMillis int    `json:"uptimeMillis"`
 
-type Spec struct {
-    App string `json:"app"`
-    Version string `json:"version"`
-    
-    Language string `json:"language"`
+    Spec Spec `json:"spec"`
 }
