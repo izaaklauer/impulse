@@ -1,10 +1,11 @@
 package engine
 
 import (
+    "context"
     "impulse/chamber"
 )
 
 type Engine interface {
-    Create(spec chamber.Spec) error
-    List() ([]chamber.Status, error)
+    Create(ctx context.Context, spec chamber.Spec) error
+    List(ctx context.Context) ([]chamber.Status, error)
 }

@@ -23,29 +23,29 @@ func NewServer() (*Server, error) {
     }, nil
 }
 
-func (s *Server) listChambersHandler(c *gin.Context) {
-    chambers, err := s.engine.List()
+func (s *Server) listChambersHandler(ctx *gin.Context) {
+    chambers, err := s.engine.List(ctx)
     if err != nil {
-        c.AbortWithError(500, err)
+        ctx.AbortWithError(500, err)
         return
     }
     
-    c.JSON(200, chambers)
+    ctx.JSON(200, chambers)
 }
 
-func (s *Server) createChamberHandler(c *gin.Context) {
+func (s *Server) createChamberHandler(ctx *gin.Context) {
     var spec chamber.Spec
-    if err := c.ShouldBindJSON(&spec); err != nil {
-        c.AbortWithError(400, err)
+    if err := ctx.ShouldBindJSON(&spec); err != nil {
+        ctx.AbortWithError(400, err)
         return
     }
     
-    if err := s.engine.Create(spec); err != nil {
-        c.AbortWithError(500, err)
+    if err := s.engine.Create(ctx, spec); err != nil {
+        ctx.AbortWithError(500, err)
         return
     }
     
-    c.Status(201)
+    ctx.Status(201)
 }
 
 func (s *Server) Serve() error {
