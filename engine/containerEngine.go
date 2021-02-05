@@ -10,7 +10,6 @@ import (
     //"log"
     "golang.org/x/sys/unix"
     "impulse/chamber"
-    "io"
     "io/ioutil"
     "os"
     "os/exec"
@@ -91,6 +90,7 @@ func (ce *ContainerEngine) Create(ctx context.Context, spec chamber.Spec) error 
     }
     baseImageExtractCmd := exec.Command("tar", "-C", rootfsPath, "-xf", baseImagePath)
 
+    // TODO: Costs 300 millis. Clever filesystem tricks could make this faster
     log.Debugf("Extracting base image from %s to %s...", baseImagePath, rootfsPath)
     if err := baseImageExtractCmd.Run(); err != nil {
         return errors.Wrapf(err, "failed to extract base image %s to rootfs at %s", baseImagePath, rootfsPath)
@@ -120,22 +120,6 @@ func (ce *ContainerEngine) Create(ctx context.Context, spec chamber.Spec) error 
         IO:      containerIO,
         PidFile: filepath.Join(bundlePath, "init.pid"),
     }
-
-    // TODO: Make this log streaming optional, and close it after container exits.
-    go func() {
-        _, err := io.Copy(os.Stdout, containerIO.Stdout())
-        if err != nil {
-            log.Error("failed to read stdout: ", err)
-        }
-        log.Info("Container stdout stream complete.")
-    }()
-    go func() {
-        _, err := io.Copy(os.Stderr, containerIO.Stderr())
-        if err != nil {
-            log.Error("failed to read stderr: ", err)
-        }
-        log.Info("Container stderr stream complete.")
-    }()
 
     go func() {
         // TODO: Create container in separate step then start container here, to catch errors earlier and return
