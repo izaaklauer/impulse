@@ -146,7 +146,7 @@ func getContainerSpec(id string, rootfsPath string) specs.Spec {
         "HOME=/root",
     }
     
-    spec.Process.Args = []string{"env"}
+    spec.Process.Args = []string{"python3", "/opt/skyhook/main.py"}
     
     return spec
 }
