@@ -7,7 +7,9 @@ import (
     "github.com/containerd/go-runc"
     "github.com/pkg/errors"
     log "github.com/sirupsen/logrus"
+    "math/rand"
     "strconv"
+    "time"
 
     //"log"
     "golang.org/x/sys/unix"
@@ -29,6 +31,7 @@ type ContainerEngine struct {
     baseImageDir        string
     guestImageDir       string
     portAllocator       *PortAllocator
+    seededRand *rand.Rand
 }
 
 func NewContainerEngine() (*ContainerEngine, error) {
@@ -45,27 +48,16 @@ func NewContainerEngine() (*ContainerEngine, error) {
         baseImageDir:        "/vagrant/images/base",
         guestImageDir:       "/vagrant/images/guest",
         portAllocator:       NewPortAllocator(5000, 9999),
+        seededRand: rand.New(rand.NewSource(time.Now().UnixNano())),
     }
     return &engine, nil
 }
 
-func (ce *ContainerEngine) getContainerId(spec chamber.Spec) string {
-    return fmt.Sprintf("%s-%s", spec.App, spec.Version)
-}
-
-func (ce *ContainerEngine) getBundlePath(spec chamber.Spec) string {
-    return filepath.Join(ce.containerRuntimeDir, ce.getContainerId(spec))
-}
-
-func (ce *ContainerEngine) getRootFsPath(spec chamber.Spec) string {
-    return filepath.Join(ce.getBundlePath(spec), "rootfs")
-}
-
 func (ce *ContainerEngine) Create(spec chamber.Spec) (status chamber.Status, err error) {
 
-    status.Id = ce.getContainerId(spec)
-    bundlePath := ce.getBundlePath(spec)
-    rootfsPath := ce.getRootFsPath(spec)
+    status.Id = fmt.Sprintf("%s-%s-%s", spec.App, spec.Version, ce.idHash())
+    bundlePath := filepath.Join(ce.containerRuntimeDir, status.Id)
+    rootfsPath := filepath.Join(bundlePath, "rootfs")
 
     log := log.WithFields(log.Fields{"containerId": status.Id})
 
@@ -104,7 +96,7 @@ func (ce *ContainerEngine) Create(spec chamber.Spec) (status chamber.Status, err
     }
 
     // Setup guest image
-    guestImagePath := filepath.Join(ce.guestImageDir, fmt.Sprintf("%s.tar", status.Id))
+    guestImagePath := filepath.Join(ce.guestImageDir, fmt.Sprintf("%s-%s.tar", spec.App, spec.Version))
     if _, err := os.Stat(guestImagePath); os.IsNotExist(err) {
         return status, fmt.Errorf("unable to find guest image at path %s", guestImagePath)
     }
@@ -198,4 +190,15 @@ func (ce *ContainerEngine) List() (statuses []chamber.Status, err error) {
         statuses = append(statuses, status)
     }
     return statuses, nil
+}
+
+func (ce *ContainerEngine) idHash() string {
+    charset := "abcdefghijklmnopqrstuvwxyz"
+    length := 5
+    
+    b := make([]byte, length)
+    for i := range b {
+        b[i] = charset[ce.seededRand.Intn(len(charset))]
+    }
+    return string(b)
 }
