@@ -7,6 +7,8 @@ import (
     "github.com/containerd/go-runc"
     "github.com/pkg/errors"
     log "github.com/sirupsen/logrus"
+    "strconv"
+
     //"log"
     "golang.org/x/sys/unix"
     "impulse/chamber"
@@ -74,7 +76,10 @@ func (ce *ContainerEngine) Create(spec chamber.Spec) (status chamber.Status, err
 
     // Create and write the oci container spec as config.json for runc
     status.Port = ce.portAllocator.GetPort()
-    containerSpec := getOciContainerSpec(status.Id, status.Port, rootfsPath)
+    containerSpec, err := getOciContainerSpec(spec, status.Id, status.Port, rootfsPath)
+    if err != nil {
+        return status, errors.Wrapf(err, "failed to generate oci container spec")
+    }
     containerSpecBytes, err := json.Marshal(containerSpec)
     if err != nil {
         return status, errors.Wrap(err, "failed to marshal container spec to json")
@@ -149,10 +154,48 @@ func (ce *ContainerEngine) Create(spec chamber.Spec) (status chamber.Status, err
     return status, nil
 }
 
-func (ce *ContainerEngine) List() ([]chamber.Status, error) {
-    return []chamber.Status{
-        {
-            Status: "running",
-        },
-    }, nil
+func (ce *ContainerEngine) List() (statuses []chamber.Status, err error) {
+    containerStatuses, err := ce.runc.List(context.Background())
+    if err != nil {
+        return statuses, errors.Wrapf(err, "failed to list runc containers")
+    }
+    for _, runcStatus := range(containerStatuses) {
+        runcState, err := ce.runc.State(context.Background(), runcStatus.ID)
+        if err != nil {
+            return statuses, errors.Wrapf(err, "failed to get runc state for container %s", runcState.ID)
+        }
+        
+        // Extract chamber spec from annotations
+        spec := chamber.Spec{}
+        chamberSpecKey := "skyhook_spec" // TODO: constant or something
+        chamberSpecJson, ok := runcState.Annotations[chamberSpecKey]
+        if !ok {
+            return statuses, fmt.Errorf("container %s missing annotation %s", runcState.ID, chamberSpecKey)
+        }
+        b := []byte(chamberSpecJson)
+        if err := json.Unmarshal(b, &spec); err != nil {
+            return statuses, errors.Wrapf(err, "failed to unmarshal spec from runc state for container %s", runcState.ID)
+        }
+        
+        // Extract port from annotations
+        portKey := "skyhook_port"
+        portStr, ok := runcState.Annotations[portKey]
+        if !ok {
+            return statuses, fmt.Errorf("container %s missing annotation %s", runcState.ID, portKey)
+        }
+        port, err := strconv.Atoi(portStr)
+        if err != nil {
+            return statuses, errors.Wrapf(err, "failed to convert port value %s to int", port)
+        }
+        
+        status := chamber.Status{
+            Id: runcState.ID,
+            Status: runcState.Status,
+            CreatedTimeMillis: runcState.Created.UnixNano() / 1000000,
+            Spec: spec,
+            Port: port,
+        }
+        statuses = append(statuses, status)
+    }
+    return statuses, nil
 }

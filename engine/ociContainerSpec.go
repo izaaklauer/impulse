@@ -1,12 +1,15 @@
 package engine
 
 import (
+    "encoding/json"
     "fmt"
     "github.com/opencontainers/runtime-spec/specs-go"
+    "github.com/pkg/errors"
+    "impulse/chamber"
 )
 
 
-func getOciContainerSpec(id string, port int, rootfsPath string) specs.Spec {
+func getOciContainerSpec(chamberSpec chamber.Spec, id string, port int, rootfsPath string) (specs.Spec, error) {
     
     capabilities := []string{
         "CAP_AUDIT_WRITE",
@@ -15,6 +18,7 @@ func getOciContainerSpec(id string, port int, rootfsPath string) specs.Spec {
     }
     
     spec := specs.Spec {
+        Annotations: map[string]string{},
         Hostname: id,
         Root: &specs.Root{
             Path: rootfsPath,
@@ -133,8 +137,17 @@ func getOciContainerSpec(id string, port int, rootfsPath string) specs.Spec {
             },
         },
     }
-    spec.Process.Env = []string{}
     
+    // skyhook meta
+    spec.Annotations["skyhook_port"] = fmt.Sprintf("%d", port)
+    jsonSpec, err := json.Marshal(chamberSpec)
+    if err != nil {
+        return spec, errors.Wrapf(err, "failed to marshal container spec")
+    }
+    spec.Annotations["skyhook_spec"] = string(jsonSpec)
+    
+    // runtime config
+    spec.Process.Env = []string{}
     spec.Process.Env = append(spec.Process.Env, fmt.Sprintf("SKYHOOK_PORT=%d", port))
     
     // Python specific
@@ -152,5 +165,5 @@ func getOciContainerSpec(id string, port int, rootfsPath string) specs.Spec {
     
     spec.Process.Args = []string{"python3", "/opt/skyhook/main.py"}
     
-    return spec
+    return spec, nil
 }

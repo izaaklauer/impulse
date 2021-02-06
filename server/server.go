@@ -30,6 +30,11 @@ func (s *Server) listChambersHandler(ctx *gin.Context) {
         return
     }
     
+    // if empty, returns 'null' instead if '[]' without this
+    if len(chambers) == 0 {
+        chambers = make([]chamber.Status, 0)
+    }
+    
     ctx.JSON(200, chambers)
 }
 
