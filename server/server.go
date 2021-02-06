@@ -24,7 +24,7 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) listChambersHandler(ctx *gin.Context) {
-    chambers, err := s.engine.List(ctx)
+    chambers, err := s.engine.List()
     if err != nil {
         ctx.AbortWithError(500, err)
         return
@@ -40,12 +40,13 @@ func (s *Server) createChamberHandler(ctx *gin.Context) {
         return
     }
     
-    if err := s.engine.Create(ctx, spec); err != nil {
+    status, err := s.engine.Create(spec)
+    if err != nil {
         ctx.AbortWithError(500, err)
         return
     }
     
-    ctx.Status(201)
+    ctx.JSON(201, status)
 }
 
 func (s *Server) Serve() error {

@@ -1,11 +1,12 @@
 package engine
 
 import (
+    "fmt"
     "github.com/opencontainers/runtime-spec/specs-go"
 )
 
 
-func getContainerSpec(id string, rootfsPath string) specs.Spec {
+func getOciContainerSpec(id string, port int, rootfsPath string) specs.Spec {
     
     capabilities := []string{
         "CAP_AUDIT_WRITE",
@@ -132,9 +133,12 @@ func getContainerSpec(id string, rootfsPath string) specs.Spec {
             },
         },
     }
+    spec.Process.Env = []string{}
+    
+    spec.Process.Env = append(spec.Process.Env, fmt.Sprintf("SKYHOOK_PORT=%d", port))
     
     // Python specific
-    spec.Process.Env = []string {
+    spec.Process.Env = append(spec.Process.Env, []string {
         "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "TERM=xterm",
         "LANG=C.UTF-8",
@@ -144,8 +148,7 @@ func getContainerSpec(id string, rootfsPath string) specs.Spec {
         "PYTHON_GET_PIP_URL=https://github.com/pypa/get-pip/raw/4be3fe44ad9dedc028629ed1497052d65d281b8e/get-pip.py",
         "PYTHON_GET_PIP_SHA256=8006625804f55e1bd99ad4214fd07082fee27a1c35945648a58f9087a714e9d4",
         "HOME=/root",
-        "SKYHOOK_PORT=6969",
-    }
+    }...)
     
     spec.Process.Args = []string{"python3", "/opt/skyhook/main.py"}
     

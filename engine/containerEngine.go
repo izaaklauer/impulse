@@ -24,8 +24,9 @@ func init() {
 type ContainerEngine struct {
     runc                *runc.Runc
     containerRuntimeDir string
-    baseImageDir  string
-    guestImageDir string
+    baseImageDir        string
+    guestImageDir       string
+    portAllocator       *PortAllocator
 }
 
 func NewContainerEngine() (*ContainerEngine, error) {
@@ -41,6 +42,7 @@ func NewContainerEngine() (*ContainerEngine, error) {
         containerRuntimeDir: "/opt/impulse/run/containers", // TODO: why does /var/run/impulse not work?
         baseImageDir:        "/vagrant/images/base",
         guestImageDir:       "/vagrant/images/guest",
+        portAllocator:       NewPortAllocator(5000, 9999),
     }
     return &engine, nil
 }
@@ -57,63 +59,63 @@ func (ce *ContainerEngine) getRootFsPath(spec chamber.Spec) string {
     return filepath.Join(ce.getBundlePath(spec), "rootfs")
 }
 
+func (ce *ContainerEngine) Create(spec chamber.Spec) (status chamber.Status, err error) {
 
-func (ce *ContainerEngine) Create(ctx context.Context, spec chamber.Spec) error {
-    
-    containerId := ce.getContainerId(spec)
+    status.Id = ce.getContainerId(spec)
     bundlePath := ce.getBundlePath(spec)
     rootfsPath := ce.getRootFsPath(spec)
 
-    log := log.WithFields(log.Fields{"containerId": containerId})
+    log := log.WithFields(log.Fields{"containerId": status.Id})
 
     // Create container bundle and rootfs path
     if err := os.MkdirAll(rootfsPath, 0755); err != nil {
-        return errors.Wrapf(err, "failed to create container root directory: %q", bundlePath)
+        return status, errors.Wrapf(err, "failed to create container root directory: %q", bundlePath)
     }
 
     // Create and write the oci container spec as config.json for runc
-    containerSpec := getContainerSpec(containerId, rootfsPath)
+    status.Port = ce.portAllocator.GetPort()
+    containerSpec := getOciContainerSpec(status.Id, status.Port, rootfsPath)
     containerSpecBytes, err := json.Marshal(containerSpec)
     if err != nil {
-        return errors.Wrap(err, "failed to marshal container spec to json")
+        return status, errors.Wrap(err, "failed to marshal container spec to json")
     }
-    
+
     runcConfigPath := filepath.Join(bundlePath, "config.json")
     if err := ioutil.WriteFile(runcConfigPath, containerSpecBytes, 0755); err != nil {
-        return errors.Wrapf(err, "Failed to write runc config to %s", runcConfigPath)
+        return status, errors.Wrapf(err, "Failed to write runc config to %s", runcConfigPath)
     }
 
     // Setup base image
     baseImagePath := filepath.Join(ce.baseImageDir, fmt.Sprintf("%s.tar", spec.Runtime))
     if _, err := os.Stat(baseImagePath); os.IsNotExist(err) {
-        return fmt.Errorf("unable to find base image at path %s", baseImagePath)
+        return status, fmt.Errorf("unable to find base image at path %s", baseImagePath)
     }
     baseImageExtractCmd := exec.Command("tar", "-C", rootfsPath, "-xf", baseImagePath)
 
     // TODO: Costs 300 millis. Clever filesystem tricks could make this faster
     log.Debugf("Extracting base image from %s to %s...", baseImagePath, rootfsPath)
     if err := baseImageExtractCmd.Run(); err != nil {
-        return errors.Wrapf(err, "failed to extract base image %s to rootfs at %s", baseImagePath, rootfsPath)
+        return status, errors.Wrapf(err, "failed to extract base image %s to rootfs at %s", baseImagePath, rootfsPath)
     }
-    
+
     // Setup guest image
-    guestImagePath := filepath.Join(ce.guestImageDir, fmt.Sprintf("%s.tar",containerId))
+    guestImagePath := filepath.Join(ce.guestImageDir, fmt.Sprintf("%s.tar", status.Id))
     if _, err := os.Stat(guestImagePath); os.IsNotExist(err) {
-        return fmt.Errorf("unable to find guest image at path %s", guestImagePath)
+        return status, fmt.Errorf("unable to find guest image at path %s", guestImagePath)
     }
     guestDir := filepath.Join(rootfsPath, "/opt/skyhook/guest") // TODO: make this configurable per base image?
     if err := os.MkdirAll(guestDir, 0755); err != nil {
-        return errors.Wrapf(err, "failed to create guest dir inside contaier at %s", guestDir)
+        return status, errors.Wrapf(err, "failed to create guest dir inside contaier at %s", guestDir)
     }
     guestImageExtractCmd := exec.Command("tar", "-C", guestDir, "-xf", guestImagePath)
     log.Debugf("Extracting guest image from %s to %s...", guestImagePath, guestDir)
     if err := guestImageExtractCmd.Run(); err != nil {
-        return errors.Wrapf(err, "failed to extract guest image %s to rootfs at %s", guestImagePath, guestDir)
+        return status, errors.Wrapf(err, "failed to extract guest image %s to rootfs at %s", guestImagePath, guestDir)
     }
-    
+
     containerIO, err := runc.NewSTDIO()
     if err != nil {
-        return errors.Wrap(err, "failed to create container io")
+        return status, errors.Wrap(err, "failed to create container io")
     }
 
     opts := &runc.CreateOpts{
@@ -122,22 +124,32 @@ func (ce *ContainerEngine) Create(ctx context.Context, spec chamber.Spec) error 
     }
 
     go func() {
+        // cleanup
+        defer func() {
+            ce.portAllocator.ReleasePort(status.Port)
+            if err := os.RemoveAll(bundlePath); err != nil {
+                log.Errorf("Failed to clean up container bundle at %s: %v", bundlePath, err)
+            }
+            log.Infof("Cleaup complete")
+        }()
+         
+        
         // TODO: Create container in separate step then start container here, to catch errors earlier and return
         log.Debug("Running runc container...")
-        i, err := ce.runc.Run(context.Background(), containerId, bundlePath, opts)
+        i, err := ce.runc.Run(context.Background(), status.Id, bundlePath, opts)
         if err != nil {
             //return fmt.Errorf("failed to create container: %v", err)
             log.Error("failed to create container: ", err)
         }
-        log.Infof("Container exited with code %d", i)    
+        log.Infof("Container exited with code %d", i)
     }()
-    
-    log.Debug("Created container")
 
-    return nil
+    status.Status = "STARTING"
+    log.Debug("Container creation started")
+    return status, nil
 }
 
-func (ce *ContainerEngine) List(ctx context.Context) ([]chamber.Status, error) {
+func (ce *ContainerEngine) List() ([]chamber.Status, error) {
     return []chamber.Status{
         {
             Status: "running",
