@@ -10,8 +10,7 @@ import (
     "math/rand"
     "strconv"
     "time"
-
-    //"log"
+    
     "golang.org/x/sys/unix"
     "impulse/chamber"
     "io/ioutil"
@@ -47,7 +46,7 @@ func NewContainerEngine() (*ContainerEngine, error) {
         containerRuntimeDir: "/opt/impulse/run/containers", // TODO: why does /var/run/impulse not work?
         baseImageDir:        "/vagrant/images/base",
         guestImageDir:       "/vagrant/images/guest",
-        portAllocator:       NewPortAllocator(5000, 9999),
+        portAllocator:       NewPortAllocator(6000, 9999),
         seededRand: rand.New(rand.NewSource(time.Now().UnixNano())),
     }
     return &engine, nil

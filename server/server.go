@@ -60,7 +60,7 @@ func (s *Server) Serve() error {
     r.GET("/chambers", s.listChambersHandler)
     r.POST("/chambers", s.createChamberHandler)
     
-    if err := r.Run(); err != nil {
+    if err := r.Run(":5000"); err != nil {
         return fmt.Errorf("failed to run server: %v", err)
     }
     log.Printf("Server exiting")
