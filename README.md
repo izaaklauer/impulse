@@ -82,7 +82,7 @@ Status: 200
             "version": "1.0.0",
             "runtime": "python3.9"
         }
-    },
+    }
 ]
 
 ```
