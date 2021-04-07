@@ -23,7 +23,7 @@ This is a component that would be used at the core of a larger FAAS platform.
 - Deeper audit of required container capabilities
 
 ## Terminology
-- Chamber: An instance of a function. Current chamber implemtation is with runc via
+- Chamber: An instance of a function. The only chamber runtime currently is minimal runc containers.
 
 ## Related projects
 Python baseimage: https://github.com/izaaklauer/baseimage-python3.9
