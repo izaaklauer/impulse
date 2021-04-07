@@ -1,7 +1,7 @@
 # impulse
 
 A proof-of-concept FAAS runtime, built on runc. Exposes an API for starting and monitoring "chambers", which are
-lightweight containers that contain client functions that are bound to a port.
+lightweight containers that contain client functions and a platform function wrapper that binds to a port.
 
 Users of impulse can make API calls to schedule functions, which are at runtime bound to a baseimage,
 given a port allocation, started, and monitored. Users can list all chambers running and query
